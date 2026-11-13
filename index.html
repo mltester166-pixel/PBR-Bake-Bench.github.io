@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PBR bake bench</title>
+<style>
+:root{--bg:#e4e6ea;--pn:#fbfbfc;--tx:#16181d;--mu:#5c6370;--ln:#d2d5db;--ac:#3b4cd4;--on:#fff;--lt:#f2a31b;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15171b;--pn:#1f2227;--tx:#eceae6;--mu:#979da8;--ln:#343841;--ac:#a3afff;--on:#10121a;--lt:#ffc04d}}
+:root[data-theme="dark"]{--bg:#15171b;--pn:#1f2227;--tx:#eceae6;--mu:#979da8;--ln:#343841;--ac:#a3afff;--on:#10121a;--lt:#ffc04d}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+main{max-width:1120px;margin:0 auto;padding:12px;display:grid;gap:14px}
+#view{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-bottom:8px}
+#gl{display:block;width:100%;height:38vh;max-height:380px;border-radius:16px;background:#2a2d33;touch-action:none;cursor:grab}
+#gl:active{cursor:grabbing}
+.bar,.row{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}.row{margin-top:12px}.bar{margin-top:10px}.bar .mu{margin-left:auto;font-size:13px}
+#ctl{display:grid;gap:12px}
+.card{background:var(--pn);border:1px solid var(--ln);border-radius:16px;padding:16px}
+h1{font-size:22px;margin:0 0 2px;letter-spacing:-.01em}h2{font-size:16px;margin:0 0 4px}
+p{margin:6px 0}.mu{color:var(--mu)}
+.slot{padding:12px 0;border-top:1px solid var(--ln)}.slot:first-child{border-top:0;padding-top:8px}.slot:last-child{padding-bottom:0}
+.hd{display:flex;gap:12px;align-items:center}.hd b{flex:1;font-weight:600}
+.hd img{width:48px;height:48px;border-radius:10px;border:1px solid var(--ln);background:var(--bg);object-fit:cover}
+img:not([src]){visibility:hidden}
+label{display:inline-flex;gap:8px;align-items:center}
+button,.btn,select,input[type=text]{font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--ln);border-radius:10px;padding:7px 12px;min-height:36px}
+.btn{display:inline-flex;align-items:center}button,.btn{cursor:pointer}
+button:hover,.btn:hover{border-color:var(--mu)}
+.pri{background:var(--ac);color:var(--on);border-color:var(--ac);font-weight:600}.pri:hover{border-color:var(--ac);filter:brightness(1.1)}
+#bake{flex:1 1 160px;min-height:46px;font-size:16px}
+button:disabled{opacity:.6;cursor:default}
+input[type=range]{flex:1;min-width:110px;accent-color:var(--ac)}
+output{min-width:3em;text-align:right;color:var(--mu);font-variant-numeric:tabular-nums}
+.lt{display:grid;grid-template-columns:minmax(0,190px) auto;justify-content:space-between;align-items:center;gap:16px;margin:12px 0}
+#pad{position:relative;aspect-ratio:1;border-radius:50%;border:1px solid var(--ln);touch-action:none;cursor:crosshair;background:radial-gradient(circle,color-mix(in srgb,var(--lt) 30%,transparent),transparent 70%),linear-gradient(var(--ln),var(--ln)) center/1px 100% no-repeat,linear-gradient(var(--ln),var(--ln)) center/100% 1px no-repeat,var(--bg)}
+#dot{position:absolute;width:22px;height:22px;margin:-11px;border-radius:50%;background:var(--lt);box-shadow:0 0 0 3px var(--pn),0 0 18px 4px color-mix(in srgb,var(--lt) 55%,transparent);pointer-events:none}
+#dot.bk{background:transparent;border:2px dashed var(--lt);box-shadow:none}
+.dirs{display:grid;grid-template-columns:repeat(3,40px);gap:6px}.dirs button{padding:0;min-height:40px;font-size:18px;line-height:1}
+.sls{display:grid;gap:8px}.sls label{display:grid;grid-template-columns:76px 1fr 3.4em}
+#lsum{font-weight:500}
+.res{display:grid;gap:10px;margin-top:12px}.res:empty{display:none}
+.res canvas{width:100%;aspect-ratio:1;border-radius:12px;border:1px solid var(--ln)}
+button:focus-visible,select:focus-visible,input:focus-visible,label:focus-within,#pad:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+@media(min-width:820px){main{grid-template-columns:1.05fr 1fr;align-items:start}#view{top:calc(env(safe-area-inset-top,0px) + 12px)}#gl{height:calc(100vh - 130px);min-height:360px;max-height:none}}
+
+.drop{display:grid;gap:2px;justify-items:center;text-align:center;padding:16px;margin:8px 0;border:2px dashed var(--ln);border-radius:14px;cursor:pointer}.drop b{color:var(--ac);font-size:16px}.drop span{font-size:13px}
+.drop:hover,.drop.on{border-color:var(--ac);background:color-mix(in srgb,var(--ac) 8%,transparent)}#ms:empty{display:none}
+.chk{align-items:flex-start;font-size:13px;color:var(--mu)}.chk input{flex:none;margin:2px 0 0}
+</style></head>
+<body><main>
+<section id="view">
+ <canvas id="gl"></canvas>
+ <div class="bar">
+  <select id="mesh" aria-label="Preview mesh"><option>Sphere<option>Plane</select>
+  <label>Tiling <input id="tile" type="range" min="1" max="8" step=".5" value="1"></label>
+  <span class="mu">Drag the preview to move the light</span>
+ </div>
+</section>
+<section id="ctl">
+ <div><h1>PBR bake bench</h1><p class="mu">Load your maps, aim the light, then bake everything into one lit picture.</p></div>
+ <div class="card"><h2>Maps</h2>
+ <label id="drop" class="drop"><input id="multi" type="file" multiple hidden accept=".tga,.dds,.jpg,.jpeg,.png,.webp,image/*"><b>Add files</b><span class="mu">Choose or drop several at once. Each goes to its slot by file name: diffuse, normal, roughness or smoothness, metalness, AO. Short suffixes like _D, _N, _S, _R, _M and _AO work too. PNG, JPG, TGA and DDS are supported.</span></label>
+ <label class="chk"><input id="dup" type="checkbox" checked> If Metalness or AO is missing, copy the smoothness/roughness map into it</label>
+ <p id="ms" class="mu" role="status"></p><div id="slots"></div></div>
+ <div class="card">
+  <h2>Light direction</h2>
+  <p class="mu">Where the light hits the baked picture from. Drag the dot, pick a side, or fine-tune with the sliders.</p>
+  <div class="lt">
+   <div id="pad" tabindex="0" role="group" aria-label="Light direction pad. Arrow keys move the light."><i id="dot"></i></div>
+   <div class="dirs" id="dirs"></div>
+  </div>
+  <div class="sls">
+   <label>Angle <input id="lA" type="range" min="0" max="360"><output></output></label>
+   <label>Height <input id="lH" type="range" min="6" max="90"><output></output></label>
+   <label>Brightness <input id="lB" type="range" min="0" max="4" step=".05" value="1"><output></output></label>
+  </div>
+  <p class="mu">Centre is straight on. The edge is a low, raking light that shows surface detail.</p>
+ </div>
+ <div class="card">
+  <h2>Bake to one picture</h2>
+  <p class="mu">Merges diffuse, normal, roughness, metalness and AO into one lit picture.</p>
+  <p id="lsum"></p>
+  <div class="row"><label>Size <select id="siz"><option value="auto" selected>Same as diffuse<option>512<option>1024<option>2048<option>4096</select></label><label>File name <input id="nm" type="text" value="material" size="12"></label></div>
+  <div class="row"><button id="bake" class="pri">Bake picture</button><button id="zip" hidden>Save picture</button></div>
+  <div id="res" class="res"></div>
+  <p id="st" class="mu" role="status"></p>
+ </div>
+</section></main>
+<script>
+const $=i=>document.getElementById(i),msg=t=>$('st').textContent=t;
+const st={d:{v:0,inv:0,ch:0},n:{v:1,inv:0,ch:0},r:{v:.5,inv:0,ch:0},m:{v:0,inv:0,ch:0},a:{v:1,inv:0,ch:0}};
+// channel sources: 0 AO, 1 roughness, 2 smoothness, 3 metalness, 4 white, 5 black
+const LAY={'glTF / Unreal ORM':[['orm',[0,1,3,4]]],'Unity metallic (R) + smoothness (A)':[['metallic',[3,3,3,2]]],'Unity HDRP mask (R metal, G AO, A smooth)':[['mask',[3,0,5,2]]],'Diffuse RGB + smoothness (A)':[['diffuse_smooth',[6,7,8,2]]],'Separate grayscale maps':[['roughness',[1,1,1,4]],['smoothness',[2,2,2,4]],['metalness',[3,3,3,4]],['ao',[0,0,0,4]]]};
+const CL=['#d6453d','#2f9e5b','#3b6fd6','#7a7f8a'],NM=['AO','roughness','smoothness','metalness','white','black','diffuse R','diffuse G','diffuse B'];
+const SL=[['d','Diffuse / base color','',0,0],['n','Normal map','Strength',1,3],['r','Roughness or smoothness','Roughness',.5,1],['m','Metalness','Metalness',0,1],['a','Ambient occlusion','AO',1,1]];
+$('slots').innerHTML=SL.map(([k,t,l,v,mx])=>`<div class="slot"><div class="hd"><img id="t_${k}" alt=""><b>${t}</b><label class="btn">Load<input type="file" accept=".tga,.dds,.jpg,.jpeg,.png,.webp,image/*" hidden data-f="${k}"></label><button data-x="${k}">Clear</button></div>${k=='d'?`<div class="row"><label>Color <input type="color" id="col" value="#cfcfcf"></label><span class="mu">used when no map is loaded</span></div></div>`:`<div class="row">${k=='n'?'':`<label>Channel <select data-c="${k}"><option>R<option>G<option>B<option>A</select></label>`}<label><input type="checkbox" data-i="${k}">${k=='n'?'Flip green':k=='r'?'Map is smoothness':'Invert'}</label><label>${l} <input type="range" min="0" max="${mx}" step=".01" value="${v}" data-v="${k}"><output>${v}</output></label></div></div>`}`).join('');
+
+const chips=()=>{const f=LAY[$('lay').value];$('chips').innerHTML=f.length>1?'Four grayscale files: '+f.map(x=>x[0]).join(', '):f[0][1].map((s,i)=>`<span class="chip" style="background:${CL[i]}">${'RGBA'[i]}</span> ${NM[s]}`).join('&ensp; ')};
+
+
+function px(k,s,h=s){const e=st[k];if(!e.img)return null;const c=e.c||(e.c={}),K=s+'x'+h;if(c[K])return c[K];const v=document.createElement('canvas');v.width=s;v.height=h;const x=v.getContext('2d',{willReadFrequently:true});x.imageSmoothingQuality='high';x.drawImage(e.img,0,0,s,h);return c[K]=x.getImageData(0,0,s,h).data}
+function bake(s,fs,h=s){
+ const p={r:px('r',s,h),m:px('m',s,h),a:px('a',s,h)},N=px('n',s,h),n=s*h,D=px('d',s,h),dc=$('col').value.match(/\w\w/g).map(x=>parseInt(x,16));
+ const val=(k,i)=>{const e=st[k],d=p[k];if(!d)return e.v;const v=d[i*4+e.ch]/255;return e.inv?1-v:v};
+ fs.forEach(f=>f.d=new Uint8Array(n*4));
+ const V=new Float32Array(9);V[4]=1;
+ for(let i=0;i<n;i++){V[0]=val('a',i);V[1]=val('r',i);V[2]=1-V[1];V[3]=val('m',i);for(let c=0;c<3;c++)V[6+c]=D?D[i*4+c]/255:dc[c]/255;
+  for(const f of fs)for(let c=0;c<4;c++)f.d[i*4+c]=V[f.c[c]]*255+.5}
+ const nd=new Uint8Array(n*4),g=st.n.inv?-1:1,sg=st.n.v;
+ for(let i=0;i<n;i++){let x=0,y=0,z=1,j=i*4;
+  if(N){x=(N[j]/127.5-1)*sg;y=(N[j+1]/127.5-1)*sg*g;z=N[j+2]/127.5-1}
+  const l=Math.hypot(x,y,z)||1;nd[j]=(x/l*.5+.5)*255+.5;nd[j+1]=(y/l*.5+.5)*255+.5;nd[j+2]=(z/l*.5+.5)*255+.5;nd[j+3]=255}
+ return nd}
+
+// PNG + ZIP writers (exact RGBA, no canvas alpha premultiply)
+const CT=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+const crc=(b,c=-1)=>{for(let i=0;i<b.length;i++)c=CT[(c^b[i])&255]^(c>>>8);return(c^-1)>>>0};
+const ck=(t,d)=>{const o=new Uint8Array(12+d.length),v=new DataView(o.buffer);v.setUint32(0,d.length);for(let i=0;i<4;i++)o[4+i]=t.charCodeAt(i);o.set(d,8);v.setUint32(8+d.length,crc(o.subarray(4,8+d.length)));return o};
+async function png(w,h,rgba){
+ const raw=new Uint8Array((w*4+1)*h);
+ for(let y=0;y<h;y++)raw.set(rgba.subarray(y*w*4,(y+1)*w*4),y*(w*4+1)+1);
+ const z=new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer());
+ const hd=new Uint8Array(13),v=new DataView(hd.buffer);v.setUint32(0,w);v.setUint32(4,h);hd[8]=8;hd[9]=6;
+ return new Blob([new Uint8Array([137,80,78,71,13,10,26,10]),ck('IHDR',hd),ck('IDAT',z),ck('IEND',new Uint8Array(0))],{type:'image/png'})}
+async function zip(fl){
+ const parts=[],cd=[];let off=0;
+ for(const f of fl){const d=new Uint8Array(await f.blob.arrayBuffer()),nm=new TextEncoder().encode(f.name),c=crc(d);
+  const h=new Uint8Array(30+nm.length),v=new DataView(h.buffer);
+  v.setUint32(0,0x04034b50,true);v.setUint16(4,20,true);v.setUint32(14,c,true);v.setUint32(18,d.length,true);v.setUint32(22,d.length,true);v.setUint16(26,nm.length,true);h.set(nm,30);
+  const e=new Uint8Array(46+nm.length),w=new DataView(e.buffer);
+  w.setUint32(0,0x02014b50,true);w.setUint16(4,20,true);w.setUint16(6,20,true);w.setUint32(16,c,true);w.setUint32(20,d.length,true);w.setUint32(24,d.length,true);w.setUint16(28,nm.length,true);w.setUint32(42,off,true);e.set(nm,46);
+  parts.push(h,d);cd.push(e);off+=h.length+d.length}
+ const cs=cd.reduce((a,b)=>a+b.length,0),end=new Uint8Array(22),q=new DataView(end.buffer);
+ q.setUint32(0,0x06054b50,true);q.setUint16(8,fl.length,true);q.setUint16(10,fl.length,true);q.setUint32(12,cs,true);q.setUint32(16,off,true);
+ return new Blob([...parts,...cd,end],{type:'application/zip'})}
+
+// WebGL2 preview
+const cv=$('gl'),gl=cv.getContext('webgl2',{antialias:true});let la=.7,le=.6,draw=()=>{},upl=()=>{},shade=null;
+if(!gl){cv.hidden=true;msg('WebGL2 is unavailable here, so there is no live preview. Baking still works.')}else{
+const VS=`#version 300 es
+in vec3 p;in vec3 q;in vec2 u;uniform mat4 M;uniform float T;out vec3 vp,vn;out vec2 vu;
+void main(){vp=p;vn=q;vu=u*T;gl_Position=M*vec4(p,1.);}`;
+const FS=`#version 300 es
+precision highp float;
+in vec3 vp,vn;in vec2 vu;uniform sampler2D N,O,DF;uniform vec3 L,E;uniform float I;out vec4 o;
+vec3 env(vec3 d,float r){
+ float w=mix(.03,.9,r),a=atan(d.x,d.z),k=mix(.18,1.6,r);
+ vec3 c=mix(vec3(.06,.055,.05),vec3(.42,.5,.66),smoothstep(-w,w,d.y));
+ float s=exp(-pow((a-.9)/k,2.))+.6*exp(-pow((a+2.2)/k,2.));
+ return c+vec3(1.,.97,.92)*2.2*s*smoothstep(-.1,.5,d.y)*mix(1.,.35,r);
+}
+void main(){
+ vec3 n=normalize(vn),V=normalize(E-vp);
+ vec3 dp1=dFdx(vp),dp2=dFdy(vp),b1=cross(dp2,n),b2=cross(n,dp1);
+ vec2 s=dFdx(vu),t=dFdy(vu);
+ vec3 T=b1*s.x+b2*t.x,B=b1*s.y+b2*t.y;
+ float iv=inversesqrt(max(max(dot(T,T),dot(B,B)),1e-12));
+ n=normalize(mat3(T*iv,-B*iv,n)*(texture(N,vu).xyz*2.-1.));
+ vec4 m=texture(O,vu);
+ float ao=m.r,ro=clamp(m.g,.05,1.),me=m.b;
+ vec3 C=pow(texture(DF,vu).rgb,vec3(2.2)),F0=mix(vec3(.04),C,me),dc=C*(1.-me);
+ float nv=max(dot(n,V),1e-3);
+ vec4 r4=ro*vec4(-1,-.0275,-.572,.022)+vec4(1,.0425,1.04,-.04);
+ vec2 ab=vec2(-1.04,1.04)*(min(r4.x*r4.x,exp2(-9.28*nv))*r4.x+r4.y)+r4.zw;
+ vec3 col=(dc*env(n,1.)+env(reflect(-V,n),ro)*(F0*ab.x+ab.y))*ao;
+ vec3 h=normalize(L+V);
+ float nl=max(dot(n,L),0.),nh=max(dot(n,h),0.),vh=max(dot(V,h),0.);
+ float al=ro*ro,a2=al*al,dd=nh*nh*(a2-1.)+1.,k=al*.5;
+ float D=a2/(3.14159*dd*dd),G=nl/(nl*(1.-k)+k)*nv/(nv*(1.-k)+k);
+ col+=(dc/3.14159+D*G*(F0+(1.-F0)*pow(1.-vh,5.))/(4.*nl*nv+1e-3))*nl*I;
+ col=col*(2.51*col+.03)/(col*(2.43*col+.59)+.14);
+ o=vec4(pow(clamp(col,0.,1.),vec3(1./2.2)),1.);
+}`;
+const sh=(t,s)=>{const x=gl.createShader(t);gl.shaderSource(x,s);gl.compileShader(x);if(!gl.getShaderParameter(x,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(x));return x};
+const pg=gl.createProgram();gl.attachShader(pg,sh(gl.VERTEX_SHADER,VS));gl.attachShader(pg,sh(gl.FRAGMENT_SHADER,FS));gl.linkProgram(pg);gl.useProgram(pg);
+const U=n=>gl.getUniformLocation(pg,n);gl.uniform1i(U('N'),0);gl.uniform1i(U('O'),1);gl.uniform1i(U('DF'),2);
+const geo=(f,n)=>{const P=[],I=[];
+ for(let j=0;j<=n;j++)for(let i=0;i<=n;i++)P.push(...f(i/n,j/n));
+ for(let j=0;j<n;j++)for(let i=0;i<n;i++){const a=j*(n+1)+i,b=a+1,c=a+n+1,d=c+1;I.push(a,c,b,b,c,d)}
+ const vb=gl.createBuffer(),ib=gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER,vb);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(P),gl.STATIC_DRAW);
+ gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ib);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(I),gl.STATIC_DRAW);
+ return{vb,ib,n:I.length}};
+const MS={Sphere:geo((u,v)=>{const t=v*Math.PI,f=(u-.5)*2*Math.PI,x=Math.sin(t)*Math.sin(f),y=Math.cos(t),z=Math.sin(t)*Math.cos(f);return[x,y,z,x,y,z,u,v]},64),
+ Plane:geo((u,v)=>[u*2-1,1-v*2,0,0,0,1,u,v],2)};
+const tx=()=>{const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);[[gl.TEXTURE_WRAP_S,gl.REPEAT],[gl.TEXTURE_WRAP_T,gl.REPEAT],[gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR]].forEach(([a,b])=>gl.texParameteri(gl.TEXTURE_2D,a,b));return t},TN=tx(),TO=tx(),TD=tx();
+upl=(nd,od,dd,z=512,y=z)=>{[[TN,nd,0],[TO,od,1],[TD,dd,2]].forEach(([t,d,u])=>{gl.activeTexture(gl.TEXTURE0+u);gl.bindTexture(gl.TEXTURE_2D,t);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,z,y,0,gl.RGBA,gl.UNSIGNED_BYTE,d);gl.generateMipmap(gl.TEXTURE_2D)})};
+draw=()=>{const r=devicePixelRatio||1,w=cv.clientWidth*r|0,h=cv.clientHeight*r|0;if(!w||!h)return;
+ if(cv.width!=w||cv.height!=h){cv.width=w;cv.height=h}
+ gl.viewport(0,0,w,h);gl.enable(gl.DEPTH_TEST);gl.clearColor(.2,.21,.24,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+ const a=w/h,f=Math.min(1,a)/Math.tan(.305),d=3.6,A=-31/29,B=-60/29;
+ gl.uniformMatrix4fv(U('M'),false,[f/a,0,0,0,0,f,0,0,0,0,A,-1,0,0,B-A*d,d]);
+ const c=$('col').value.match(/\w\w/g).map(x=>Math.pow(parseInt(x,16)/255,2.2));
+ gl.uniform3f(U('C'),...c);gl.uniform3f(U('L'),Math.cos(le)*Math.sin(la),Math.sin(le),Math.cos(le)*Math.cos(la));gl.uniform3f(U('E'),0,0,d);gl.uniform1f(U('I'),3*$('lB').value);gl.uniform1f(U('T'),+$('tile').value);
+ const m=MS[$('mesh').value];gl.bindBuffer(gl.ARRAY_BUFFER,m.vb);gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,m.ib);
+ [['p',3,0],['q',3,12],['u',2,24]].forEach(([n,s,o])=>{const l=gl.getAttribLocation(pg,n);gl.enableVertexAttribArray(l);gl.vertexAttribPointer(l,s,gl.FLOAT,false,32,o)});
+ gl.drawElements(gl.TRIANGLES,m.n,gl.UNSIGNED_SHORT,0)};
+shade=(s,h=s)=>{
+ const f={c:[0,1,3,4]},g={c:[6,7,8,4]},nd=bake(s,[f,g],h);upl(nd,f.d,g.d,s,h);
+ const fb=gl.createFramebuffer(),t=gl.createTexture();
+ gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,t);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,s,h,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+ gl.bindFramebuffer(gl.FRAMEBUFFER,fb);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0);
+ gl.viewport(0,0,s,h);
+ gl.uniformMatrix4fv(U('M'),false,[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);
+ gl.uniform3f(U('L'),Math.cos(le)*Math.sin(la),Math.sin(le),Math.cos(le)*Math.cos(la));gl.uniform3f(U('E'),0,0,3.6);gl.uniform1f(U('I'),3*$('lB').value);gl.uniform1f(U('T'),1);
+ const m=MS.Plane;gl.bindBuffer(gl.ARRAY_BUFFER,m.vb);gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,m.ib);
+ [['p',3,0],['q',3,12],['u',2,24]].forEach(([n,k,o])=>{const l=gl.getAttribLocation(pg,n);gl.enableVertexAttribArray(l);gl.vertexAttribPointer(l,k,gl.FLOAT,false,32,o)});
+ gl.drawElements(gl.TRIANGLES,m.n,gl.UNSIGNED_SHORT,0);
+ const rp=new Uint8Array(s*h*4),out=new Uint8Array(s*h*4);gl.readPixels(0,0,s,h,gl.RGBA,gl.UNSIGNED_BYTE,rp);
+ for(let y=0;y<h;y++)out.set(rp.subarray((h-1-y)*s*4,(h-y)*s*4),y*s*4);
+ gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.bindTexture(gl.TEXTURE_2D,null);gl.deleteFramebuffer(fb);gl.deleteTexture(t);
+ return out};
+let ox=0,oy=0;
+cv.onpointerdown=e=>{ox=e.clientX;oy=e.clientY;cv.setPointerCapture(e.pointerId)};
+cv.onpointermove=e=>{if(!cv.hasPointerCapture(e.pointerId))return;la+=(e.clientX-ox)*.012;le=Math.max(-.2,Math.min(1.5,le-(e.clientY-oy)*.012));ox=e.clientX;oy=e.clientY;lsync();rq()};
+new ResizeObserver(()=>rq()).observe(cv);
+}
+let bz=0;const rq=()=>{if(!bz){bz=1;requestAnimationFrame(()=>{bz=0;draw()})}};
+let pv=0;const upd=()=>{if(pv)return;pv=1;requestAnimationFrame(()=>{pv=0;if(gl){const f={c:[0,1,3,4]},g={c:[6,7,8,4]},nd=bake(512,[f,g]);upl(nd,f.d,g.d)}draw()})};
+
+const sl=$('slots');
+sl.oninput=e=>{const t=e.target;if(t.dataset.v){st[t.dataset.v].v=+t.value;t.nextElementSibling.textContent=(+t.value).toFixed(2);upd()}else if(t.id=='col')upd()};
+sl.onchange=e=>{const t=e.target,d=t.dataset;if(d.f){if(t.files[0])rd(d.f,t.files[0]).catch(e=>mm(e.message));t.value=''}else if(d.i){st[d.i].inv=+t.checked;upd()}else if(d.c){st[d.c].ch=t.selectedIndex;upd()}};
+sl.onclick=e=>{const k=e.target.dataset.x;if(k){st[k].img=null;$('t_'+k).removeAttribute('src');upd()}};
+$('view').oninput=$('view').onchange=()=>rq();
+
+const th=(d,s)=>{const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d'),im=x.createImageData(128,128);
+ for(let y=0;y<128;y++)for(let i=0;i<128;i++){const a=((y*s/128|0)*s+(i*s/128|0))*4,o=(y*128+i)*4;im.data[o]=d[a];im.data[o+1]=d[a+1];im.data[o+2]=d[a+2];im.data[o+3]=255}
+ x.putImageData(im,0,0);return c};
+let outs=[];
+function save(f,b){
+  try{
+    const url=URL.createObjectURL(b);
+    const a=document.createElement('a');
+    a.href=url; a.download=f; a.rel='noopener'; a.style.display='none';
+    document.body.appendChild(a); a.click(); a.remove();
+    // keep the URL alive a while: some mobile browsers start the download late
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+    msg('Saved '+f);
+  }catch(e){ msg('Could not save: '+(e.message||e)); }
+}
+$('bake').onclick=async()=>{const b=$('bake'),R=$('res');b.disabled=true;b.textContent='Baking…';msg('');
+ await new Promise(r=>setTimeout(r,40));
+ try{const s=+$('siz').value,fs=LAY[$('lay').value].map(([n,c])=>({n,c})),nd=(st.d.img&&!fs.some(f=>f.c.includes(6))&&fs.push({n:'diffuse',c:[6,7,8,4]}),bake(s,fs)),base=$('nm').value.trim()||'material';
+  outs=[];R.textContent='';
+  for(const [n,d] of [...fs.map(f=>[f.n,f.d]),['normal',nd]]){
+   const name=`${base}_${n}.png`,blob=await png(s,s,d),fg=document.createElement('figure'),bt=document.createElement('button');
+   outs.push({name,blob});bt.textContent='Save';bt.onclick=()=>save(name,blob);
+   fg.append(th(d,s),name,bt);R.append(fg)}
+  $('zip').hidden=false;msg(`${outs.length} maps at ${s}×${s}`)}
+ catch(e){msg('Bake failed: '+e.message)}
+ b.disabled=false;b.textContent='Bake maps'};
+$('zip').onclick=async()=>save(($('nm').value.trim()||'material')+'_pbr.zip',await zip(outs));
+function bsz(){const v=$('siz').value,e=st.d.img;let w=1024,h=1024;
+ if(v=='auto'){if(e){w=e.naturalWidth||e.width;h=e.naturalHeight||e.height}}else w=h=+v;
+ const k=Math.min(1,Math.min(gl.getParameter(gl.MAX_TEXTURE_SIZE),8192)/Math.max(w,h));return[Math.round(w*k),Math.round(h*k)]}
+let pic=null;
+$('bake').onclick=async()=>{const b=$('bake'),R=$('res');
+ if(!shade)return msg('Baking needs WebGL2, which is unavailable here.');
+ b.disabled=true;b.textContent='Baking…';msg('');pic=null;$('zip').hidden=true;
+ await new Promise(r=>setTimeout(r,40));
+ try{const[s,h]=bsz(),d=shade(s,h),c=document.createElement('canvas');
+  c.width=s;c.height=h;c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(d.buffer),s,h),0,0);
+  R.textContent='';R.append(c);
+  pic={name:($('nm').value.trim()||'material')+'_baked.png',blob:await png(s,h,d)};
+  $('zip').hidden=false;msg(`${s}×${h} picture ready`)}
+ catch(e){msg('Bake failed: '+e.message)}
+ for(const k in st)st[k].c={};
+ upd();b.disabled=false;b.textContent='Bake picture'};
+$('zip').onclick=()=>pic&&save(pic.name,pic.blob);
+// Light direction controls: la/le stay the single source of truth for preview and bake
+const RD=180/Math.PI,pad=$('pad'),dot=$('dot'),lA=$('lA'),lH=$('lH'),lB=$('lB'),cl=(v,a,b)=>Math.max(a,Math.min(b,v));
+function lsync(){const x=Math.cos(le)*Math.sin(la),y=Math.sin(le),z=Math.cos(le)*Math.cos(la),
+ a=(Math.atan2(y,x)*RD+360)%360,h=cl(Math.asin(cl(z,-1,1))*RD,6,90);
+ dot.style.left=50+x*50+'%';dot.style.top=50-y*50+'%';dot.classList.toggle('bk',z<0);
+ lA.value=a;lH.value=h;lA.nextElementSibling.textContent=Math.round(a)+'°';lH.nextElementSibling.textContent=Math.round(h)+'°';lB.nextElementSibling.textContent=Math.round(lB.value*100)+'%';
+ $('lsum').textContent=`Baking with the light at ${Math.round(a)}°, ${Math.round(h)}° high, ${Math.round(lB.value*100)}% brightness.`}
+function lxy(x,y){const m=Math.hypot(x,y);if(m>.995){x*=.995/m;y*=.995/m}le=Math.asin(y);la=Math.atan2(x,Math.sqrt(1-x*x-y*y));lsync();rq()}
+function lpol(a,h){a/=RD;h/=RD;lxy(Math.cos(h)*Math.cos(a),Math.cos(h)*Math.sin(a))}
+const pxy=e=>{const r=pad.getBoundingClientRect();lxy((e.clientX-r.left)/r.width*2-1,1-(e.clientY-r.top)/r.height*2)};
+pad.onpointerdown=e=>{pad.setPointerCapture(e.pointerId);pxy(e)};
+pad.onpointermove=e=>{if(pad.hasPointerCapture(e.pointerId))pxy(e)};
+pad.onkeydown=e=>{const k={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,1],ArrowDown:[0,-1]}[e.key];if(k){e.preventDefault();lxy(Math.cos(le)*Math.sin(la)+k[0]*.05,Math.sin(le)+k[1]*.05)}};
+lB.oninput=()=>{lsync();rq()};
+lA.oninput=lH.oninput=()=>lpol(+lA.value,+lH.value);
+const DN=['top left','top','top right','left','','right','bottom left','bottom','bottom right'];
+$('dirs').innerHTML=[[135,'↖'],[90,'↑'],[45,'↗'],[180,'←'],[0,'•'],[0,'→'],[225,'↙'],[270,'↓'],[315,'↘']].map(([a,s],i)=>`<button data-a="${a}" data-h="${i==4?90:45}" aria-label="${i==4?'Light straight on':'Light from '+DN[i]}">${s}</button>`).join('');
+$('dirs').onclick=e=>{const b=e.target.closest('button');if(b)lpol(+b.dataset.a,+b.dataset.h)};
+lsync();
+// TGA + DDS decoders: return {w,h,d} with d = RGBA bytes, top row first
+function tga(b){
+ const ty=b[2],t=ty&7,w=b[12]|b[13]<<8,h=b[14]|b[15]<<8,bp=b[16],n=bp+7>>3,md=b[7],mb=md+7>>3,mo=b[3]|b[4]<<8;
+ if(!w||!h||ty>11||![1,2,3].includes(t))throw Error('Unsupported TGA type');
+ let o=18+b[0];const pal=o,N=w*h,d=new Uint8ClampedArray(N*4);if(b[1])o+=(b[5]|b[6]<<8)*mb;
+ const rc=(p,bits,g)=>{if(g)return[b[p],b[p],b[p],bits>8?b[p+1]:255];
+  if(bits<24){const v=b[p]|b[p+1]<<8;return[v>>10&31,v>>5&31,v&31].map(x=>x*8.226).concat(255)}
+  return[b[p+2],b[p+1],b[p],bits>24?b[p+3]:255]};
+ const pt=(i,p)=>d.set(t==1?rc(pal+(b[p]-mo)*mb,md):rc(p,bp,t==3),i*4);
+ for(let i=0;i<N;){
+  if(ty>8){const c=b[o++],k=(c&127)+1;for(let j=0;j<k&&i<N;j++){pt(i++,o);if(!(c&128))o+=n}if(c&128)o+=n}
+  else{pt(i++,o);o+=n}}
+ if(b[17]&32)return{w,h,d};
+ const r=w*4,x=new Uint8ClampedArray(d.length);for(let y=0;y<h;y++)x.set(d.subarray(y*r,y*r+r),(h-1-y)*r);return{w,h,d:x}}
+function dds(b){
+ const v=new DataView(b.buffer,b.byteOffset,b.byteLength),u=i=>v.getUint32(i,true);
+ if(b.length<128||u(0)!=0x20534444)throw Error('Not a valid DDS file');
+ const h=u(12),w=u(16),d=new Uint8ClampedArray(w*h*4);let o=128,f=u(80)&4?String.fromCharCode(...b.subarray(84,88)):'RAW';
+ f={BC4U:'ATI1',BC5U:'ATI2'}[f]||f;
+ if(f=='DX10'){f={71:'DXT1',72:'DXT1',74:'DXT3',75:'DXT3',77:'DXT5',78:'DXT5',80:'ATI1',81:'ATI1',83:'ATI2',84:'ATI2'}[u(128)];o=148}
+ if(!['DXT1','DXT3','DXT5','ATI1','ATI2','RAW'].includes(f))throw Error('Unsupported DDS format. Use DXT1, DXT3, DXT5, BC4, BC5 or uncompressed.');
+ if(f=='RAW'){const n=u(88)>>3,m=[u(92),u(96),u(100),u(104)].map(m=>{if(!m)return 0;let s=0,l=0;while(!(m>>>s&1))s++;while(l<16&&m>>>s+l&1)l++;return[s,2**l-1]});
+  for(let i=0;i<w*h;i++){let x=0;for(let k=0;k<n;k++)x+=b[o+i*n+k]*2**(8*k);m.forEach((e,c)=>d[i*4+c]=e?Math.floor(x/2**e[0])%(e[1]+1)*255/e[1]:255)}
+  return{w,h,d}}
+ const bw=w+3>>2,bh=h+3>>2,bs=f=='DXT1'||f=='ATI1'?8:16,e5=c=>[(c>>11&31)*8.226,(c>>5&63)*4.048,(c&31)*8.226],
+ ab=p=>{const a=[b[p],b[p+1]],r=[];for(let i=1;i<7;i++)a.push(a[0]>a[1]?((7-i)*a[0]+i*a[1])/7:i<5?((5-i)*a[0]+i*a[1])/5:i==5?0:255);
+  for(let q=0;q<2;q++){const s=b[p+2+q*3]|b[p+3+q*3]<<8|b[p+4+q*3]<<16;for(let i=0;i<8;i++)r.push(a[s>>3*i&7])}return r},
+ cb=p=>{const c0=b[p]|b[p+1]<<8,c1=b[p+2]|b[p+3]<<8,A=e5(c0),B=e5(c1),
+  e=c0>c1||f!='DXT1'?[A,B,A.map((x,i)=>(2*x+B[i])/3),A.map((x,i)=>(x+2*B[i])/3)]:[A,B,A.map((x,i)=>(x+B[i])/2),[0,0,0]],
+  s=(b[p+4]|b[p+5]<<8|b[p+6]<<16|b[p+7]<<24)>>>0;return Array.from({length:16},(_,i)=>e[s>>>2*i&3])};
+ for(let by=0;by<bh;by++)for(let bx=0;bx<bw;bx++,o+=bs){
+  let c,A,G;
+  if(f=='ATI1')A=ab(o);else if(f=='ATI2'){A=ab(o);G=ab(o+8)}
+  else{c=cb(o+(f=='DXT1'?0:8));if(f=='DXT3')A=Array.from({length:16},(_,i)=>(b[o+(i>>1)]>>(i&1)*4&15)*17);if(f=='DXT5')A=ab(o)}
+  for(let i=0;i<16;i++){const x=bx*4+(i&3),y=by*4+(i>>2);if(x>=w||y>=h)continue;const q=(y*w+x)*4;
+   if(c){d.set(c[i],q);d[q+3]=A?A[i]:255}
+   else if(G){const X=A[i]/127.5-1,Y=G[i]/127.5-1;d.set([A[i],G[i],(Math.sqrt(Math.max(0,1-X*X-Y*Y))*.5+.5)*255,255],q)}
+   else d.set([A[i],A[i],A[i],255],q)}}
+ return{w,h,d}}
+// Add files: route by file name, decode TGA/DDS, load JPG/PNG/WebP natively
+const mm=t=>$('ms').textContent=t,mi=$('multi'),dz=$('drop');
+const RU=[['n',/norm|nrm|[_\- .]n$/],['a',/(^|[^a-z])ao($|[^a-z])|occl|ambient/],['m',/metal|[_\- .]m$/],['r',/rough|smooth|gloss|[_\- .][rs]$/],['d',/diff|albedo|colou?r|base|[_\- .](d|col|bc)$/]],
+ SN={d:'Diffuse',n:'Normal',r:'Roughness/smoothness',m:'Metalness',a:'AO'};
+const cvs=(w,h,d)=>{const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').putImageData(new ImageData(d,w,h),0,0);return c};
+const put=(k,img,url)=>{st[k].img=img;st[k].c={};st[k].auto=0;$('t_'+k).src=url;upd()};
+async function rd(k,f){
+ const x=(f.name.match(/\.(\w+)$/)||[])[1]?.toLowerCase();
+ if(x=='tga'||x=='dds'){const r=(x=='tga'?tga:dds)(new Uint8Array(await f.arrayBuffer())),c=cvs(r.w,r.h,r.d),t=document.createElement('canvas');
+  t.width=t.height=96;t.getContext('2d').drawImage(c,0,0,96,96);put(k,c,t.toDataURL())}
+ else await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{put(k,im,r.result);ok()};im.onerror=()=>no(Error('Can’t read this image'));im.src=r.result};r.readAsDataURL(f)})}
+const opt=(k,ch,inv)=>{st[k].ch=ch;st[k].inv=+inv;const a=document.querySelector(`[data-c=${k}]`),c=document.querySelector(`[data-i=${k}]`);if(a)a.selectedIndex=ch;if(c)c.checked=!!inv};
+async function addFiles(fl){
+ const ok=[],bad=[];let pkd=0;mm('Loading…');
+ for(const f of fl){const n=f.name.toLowerCase().replace(/\.\w+$/,''),m=RU.find(([,re])=>re.test(n)),sm=/smooth|gloss|[_\- .]s$/.test(n),pk=/metal/.test(n)&&sm;
+  if(!m){bad.push(f.name);continue}if(pk)pkd=1;
+  try{for(const k of pk?['m','r']:[m[0]]){await rd(k,f);opt(k,pk&&k=='r'?3:0,k=='r'?sm:k=='n'&&/dx|directx/.test(n));ok.push(SN[k])}}
+  catch(e){bad.push(`${f.name} (${e.message})`)}}
+ const cp=[];if($('dup').checked&&!pkd&&ok.includes(SN.r))for(const k of['m','a'])if(!st[k].img||st[k].auto){put(k,st.r.img,$('t_r').src);st[k].auto=1;opt(k,0,0);cp.push(SN[k])}
+ mm((ok.length?'Loaded: '+ok.join(', ')+'. ':'')+(cp.length?'Copied the smoothness/roughness map into '+cp.join(' and ')+' (channel R); change or clear it if that’s wrong. ':'')+(bad.length?'Couldn’t place: '+bad.join('; ')+'. Use that slot’s Load button.':''))}
+mi.onchange=()=>{addFiles([...mi.files]);mi.value=''};
+addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('on')});
+addEventListener('dragleave',e=>{if(!e.relatedTarget)dz.classList.remove('on')});
+addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('on');addFiles([...e.dataTransfer.files])});
+upd();
+</script>
+</body></html>
